@@ -19,7 +19,7 @@ DFRobot_RGBLCD1602 lcd(0x6B, 16, 2);
 // ============================================================
 const int HX711_dout_1 = 34;  // mcu > HX711 no 1 dout pin
 const int HX711_sck_1 = 25;   // mcu > HX711 no 1 sck pin
-const int HX711_dout_2 = 35;  // mcu > HX711 no 2 dout pin
+const int HX711_dout_2 = 35;  // mcu > HX711 no 2 dout pins
 const int HX711_sck_2 = 26;   // mcu > HX711 no 2 sck pin
 const int BUTTON_PIN = 8;     // button for cancelling the alert
 
