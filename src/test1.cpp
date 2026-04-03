@@ -1,6 +1,7 @@
 
-// Testing File for only one Load cell
 /*
+// Testing File for only one Load cell
+
    Settling time (number of samples) and data filtering can be adjusted in the
    config.h file For calibration and storing the calibration value in eeprom,
    see example file "Calibration.ino"
@@ -13,7 +14,7 @@
    "Read_1x_load_cell_interrupt_driven.ino".
 
    This is an example sketch on how to use this library
-*/
+
 
 #include <Arduino.h>
 #include <HX711_ADC.h>
@@ -114,3 +115,4 @@ void loop() {
     Serial.println("Tare complete");
   }
 }
+*/

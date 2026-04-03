@@ -1,11 +1,8 @@
-
-// Working File With Both Outputs.
 #include <Arduino.h>
 #include <HX711_ADC.h>
 #include <Wire.h>  // I2C communication for ldc communication
 
 #include "DFRobot_RGBLCD1602.h"  // LCD control library
-
 #if defined(ESP8266) || defined(ESP32) || defined(AVR)
 #include <EEPROM.h>
 #endif
@@ -18,6 +15,7 @@ const int HX711_dout_1 = 34;  // mcu > HX711 no 1 dout pin
 const int HX711_sck_1 = 25;   // mcu > HX711 no 1 sck pin
 const int HX711_dout_2 = 35;  // mcu > HX711 no 2 dout pin
 const int HX711_sck_2 = 26;   // mcu > HX711 no 2 sck pin
+const int BUTTON_PIN = 8;     // button for cancelling the alert
 
 // HX711 constructor (dout pin, sck pin)
 HX711_ADC LoadCell_1(HX711_dout_1, HX711_sck_1);  // HX711 1
@@ -29,7 +27,33 @@ const int calVal_eepromAdress_2 =
     4;  // eeprom adress for calibration value load cell 2 (4 bytes)
 unsigned long t = 0;
 
+enum State { NORMAL, VERIFYING_FALL, ALERT_TRIGGERED };
+
+State currentState = NORMAL;
+
+unsigned long impactTime = 0;
+unsigned long fallConfirmTime = 0;
+
+const float IMPACT_THRESHOLD = 50.0;       // ADJUST !!
+const unsigned long CANCEL_WINDOW = 3000;  // 3s to cancel
+
+bool cancelPressed = false;
+
+void updateLCD(String line1, String line2) {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(line1);
+  lcd.setCursor(0, 1);
+  lcd.print(line2);
+}
+
+/*
 void setup() {
+  lcd.init();  // initialize LCD
+  lcd.clear();
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
   Serial.begin(115200);
   delay(10);
   Serial.println();
@@ -81,12 +105,21 @@ void setup() {
   LoadCell_2.setCalFactor(
       calibrationValue_2);  // user set calibration value (float)
   Serial.println("Startup is complete");
-}
+
 
 void loop() {
   static boolean newDataReady = 0;
   const int serialPrintInterval =
       0;  // increase value to slow down serial print activity
+  static unsigned long lastPress = 0;  // for debouncing
+
+  static float a = 0;
+  static float b = 0;
+
+  if (digitalRead(BUTTON_PIN) == LOW && millis() - lastPress > 200) {
+    cancelPressed = true;
+    lastPress = millis();
+  }
 
   // check for new data/start next conversion:
   if (LoadCell_1.update()) newDataReady = true;
@@ -95,8 +128,8 @@ void loop() {
   // get smoothed value from data set
   if ((newDataReady)) {
     if (millis() > t + serialPrintInterval) {
-      float a = LoadCell_1.getData();
-      float b = LoadCell_2.getData();
+      a = LoadCell_1.getData();
+      b = LoadCell_2.getData();
       Serial.print("Load_cell 1 output val: ");
       Serial.print(a);
       Serial.print("    Load_cell 2 output val: ");
@@ -104,22 +137,55 @@ void loop() {
       newDataReady = 0;
       t = millis();
     }
-  }
+    float totalForce = abs(a) + abs(b);
 
-  // receive command from serial terminal, send 't' to initiate tare operation:
-  if (Serial.available() > 0) {
-    char inByte = Serial.read();
-    if (inByte == 't') {
-      LoadCell_1.tareNoDelay();
-      LoadCell_2.tareNoDelay();
+    // STATE MACHINE
+    switch (currentState) {
+      case NORMAL:
+        updateLCD("Monitoring   ", "");
+        if (totalForce >
+            IMPACT_THRESHOLD) {  // we could also alert if the total force
+                                 // reading doubles or something
+          impactTime = millis();
+          currentState = VERIFYING_FALL;
+        }
+        break;
+
+      case VERIFYING_FALL:
+        updateLCD("Impact Detected!", "Cancel w/ Button");
+
+        if (cancelPressed) {
+          currentState = NORMAL;
+          cancelPressed = false;
+        } else if (millis() - impactTime > CANCEL_WINDOW) {
+          currentState = ALERT_TRIGGERED;
+        }
+        break;
+
+      case ALERT_TRIGGERED:
+        updateLCD("!!! ALERT !!!", "Fall Detected");
+        if (cancelPressed) {
+          currentState = NORMAL;
+        }
+        break;
     }
   }
 
-  // check if last tare operation is complete
-  if (LoadCell_1.getTareStatus() == true) {
-    Serial.println("Tare load cell 1 complete");
-  }
-  if (LoadCell_2.getTareStatus() == true) {
-    Serial.println("Tare load cell 2 complete");
+// receive command from serial terminal, send 't' to initiate tare operation:
+if (Serial.available() > 0) {
+  char inByte = Serial.read();
+  if (inByte == 't') {
+    LoadCell_1.tareNoDelay();
+    LoadCell_2.tareNoDelay();
   }
 }
+
+// check if last tare operation is complete
+if (LoadCell_1.getTareStatus() == true) {
+  Serial.println("Tare load cell 1 complete");
+}
+if (LoadCell_2.getTareStatus() == true) {
+  Serial.println("Tare load cell 2 complete");
+}
+}
+*/
