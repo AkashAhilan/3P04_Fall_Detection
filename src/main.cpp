@@ -14,13 +14,18 @@
 // LCD object with address, columns, rows
 DFRobot_RGBLCD1602 lcd(0x6B, 16, 2);
 
-// pins:
+// ============================================================
+//                PINS
+// ============================================================
 const int HX711_dout_1 = 34;  // mcu > HX711 no 1 dout pin
 const int HX711_sck_1 = 25;   // mcu > HX711 no 1 sck pin
 const int HX711_dout_2 = 35;  // mcu > HX711 no 2 dout pin
 const int HX711_sck_2 = 26;   // mcu > HX711 no 2 sck pin
 const int BUTTON_PIN = 8;     // button for cancelling the alert
 
+// ============================================================
+//                LOADCELL CONSTRUCTORS AND
+// ============================================================
 // HX711 constructor (dout pin, sck pin)
 HX711_ADC LoadCell_1(HX711_dout_1, HX711_sck_1);  // HX711 1
 HX711_ADC LoadCell_2(HX711_dout_2, HX711_sck_2);  // HX711 2
@@ -30,6 +35,18 @@ const int calVal_eepromAdress_1 =
 const int calVal_eepromAdress_2 =
     4;  // eeprom adress for calibration value load cell 2 (4 bytes)
 unsigned long t = 0;
+
+// ============================================================
+//                STATE DEFINITIONS
+// ============================================================
+
+enum State { NORMAL, VERIFYING_FALL, ALERT_TRIGGERED };
+
+State currentState = NORMAL;
+
+// ============================================================
+//                SETUP LOOP
+// ============================================================
 
 void setup() {
   Serial.begin(115200);
