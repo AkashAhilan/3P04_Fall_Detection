@@ -14,12 +14,19 @@
 // LCD object with address, columns, rows
 DFRobot_RGBLCD1602 lcd(0x6B, 16, 2);
 
-// pins:
+// ============================================================
+//                PINS
+// ============================================================
+
 const int HX711_dout_1 = 34;  // mcu > HX711 no 1 dout pin
 const int HX711_sck_1 = 25;   // mcu > HX711 no 1 sck pin
 const int HX711_dout_2 = 35;  // mcu > HX711 no 2 dout pin
 const int HX711_sck_2 = 26;   // mcu > HX711 no 2 sck pin
 const int BUTTON_PIN = 8;     // button for cancelling the alert
+
+// ============================================================
+//             CONSTRUCTORS AND VARIABLES
+// ============================================================
 
 // HX711 constructor (dout pin, sck pin)
 HX711_ADC LoadCell_1(HX711_dout_1, HX711_sck_1);  // HX711 1
@@ -31,27 +38,61 @@ const int calVal_eepromAdress_2 =
     4;  // eeprom adress for calibration value load cell 2 (4 bytes)
 unsigned long t = 0;
 
+// Button Variable
+const unsigned long DEBOUNCE_MS = 200;
+bool cancelPressed = false;
+
+// Fall Detection Variables
+unsigned long impactTime = 0;
+unsigned long fallConfirmTime = 0;
+
+const float IMPACT_THRESHOLD = 50.0;       // ADJUST !!
+const unsigned long CANCEL_WINDOW = 3000;  // 3s to cancel
+
+// ============================================================
+//                STATE DEFINITIONS
+// ============================================================
+
+enum State { NORMAL, VERIFYING_FALL, ALERT_TRIGGERED };
+
+State currentState = NORMAL;
+
+// ============================================================
+//                FUNCTION PROTOTYPES
+// ============================================================
+
+void buttonPress();
+
+// ============================================================
+//                SETUP LOOP
+// ============================================================
+
 void setup() {
   Serial.begin(115200);
   Wire.begin(22, 19);
-  lcd.init();
+  lcd.init();  // Initalize LCD
   lcd.clear();
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
   lcd.setCursor(0, 0);
+  delay(100);
   lcd.print("Fall Detection");
-  delay(10);
+  
   Serial.println();
   Serial.println("Starting...");
+
+  // Calibration set up
 
   float calibrationValue_1;  // calibration value load cell 1
   float calibrationValue_2;  // calibration value load cell 2
 
-  calibrationValue_1 =
-      696.0;  // uncomment this if you want to set this value in the sketch
-  calibrationValue_2 =
-      733.0;  // uncomment this if you want to set this value in the sketch
+  calibrationValue_1 = 696.0;
+  calibrationValue_2 = 733.0;
+// uncomment this if you want to set this value in the sketch
 #if defined(ESP8266) || defined(ESP32)
-  // EEPROM.begin(512); // uncomment this if you use ESP8266 and want to fetch
-  // the value from eeprom
+// EEPROM.begin(512); // uncomment this if you use ESP8266 and want to fetch
+// the value from eeprom
 #endif
   // EEPROM.get(calVal_eepromAdress_1, calibrationValue_1); // uncomment this if
   // you want to fetch the value from eeprom EEPROM.get(calVal_eepromAdress_2,
@@ -95,9 +136,13 @@ void loop() {
   const int serialPrintInterval =
       0;  // increase value to slow down serial print activity
 
+  static float a = 0;
+  static float b = 0;
+
   // check for new data/start next conversion:
-  if (LoadCell_1.update()) newDataReady = true;
-  LoadCell_2.update();
+  bool ready1 = LoadCell_1.update();
+  bool ready2 = LoadCell_2.update();
+  if (ready1 && ready2) newDataReady = true;
 
   // get smoothed value from data set
   if ((newDataReady)) {
@@ -128,5 +173,13 @@ void loop() {
   }
   if (LoadCell_2.getTareStatus() == true) {
     Serial.println("Tare load cell 2 complete");
+  }
+}
+
+void buttonPress() {
+  static unsigned long lastPress = 0;
+  if (digitalRead(BUTTON_PIN) == LOW && millis() - lastPress > DEBOUNCE_MS) {
+    cancelPressed = true;
+    lastPress = millis();
   }
 }

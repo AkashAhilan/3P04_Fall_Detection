@@ -1,4 +1,3 @@
-#include <Arduino.h>
 #include <HX711_ADC.h>
 #include <Wire.h>  // I2C communication for ldc communication
 
@@ -47,14 +46,13 @@ void updateLCD(String line1, String line2) {
   lcd.print(line2);
 }
 
-/*
 void setup() {
   lcd.init();  // initialize LCD
   lcd.clear();
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  Serial.begin(115200);
+  Serial.begin(57600);
   delay(10);
   Serial.println();
   Serial.println("Starting...");
@@ -105,7 +103,7 @@ void setup() {
   LoadCell_2.setCalFactor(
       calibrationValue_2);  // user set calibration value (float)
   Serial.println("Startup is complete");
-
+}
 
 void loop() {
   static boolean newDataReady = 0;
@@ -171,21 +169,20 @@ void loop() {
     }
   }
 
-// receive command from serial terminal, send 't' to initiate tare operation:
-if (Serial.available() > 0) {
-  char inByte = Serial.read();
-  if (inByte == 't') {
-    LoadCell_1.tareNoDelay();
-    LoadCell_2.tareNoDelay();
+  // receive command from serial terminal, send 't' to initiate tare operation:
+  if (Serial.available() > 0) {
+    char inByte = Serial.read();
+    if (inByte == 't') {
+      LoadCell_1.tareNoDelay();
+      LoadCell_2.tareNoDelay();
+    }
+  }
+
+  // check if last tare operation is complete
+  if (LoadCell_1.getTareStatus() == true) {
+    Serial.println("Tare load cell 1 complete");
+  }
+  if (LoadCell_2.getTareStatus() == true) {
+    Serial.println("Tare load cell 2 complete");
   }
 }
-
-// check if last tare operation is complete
-if (LoadCell_1.getTareStatus() == true) {
-  Serial.println("Tare load cell 1 complete");
-}
-if (LoadCell_2.getTareStatus() == true) {
-  Serial.println("Tare load cell 2 complete");
-}
-}
-*/
