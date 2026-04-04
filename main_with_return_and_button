@@ -1,0 +1,301 @@
+// Working File With Both Outputs.
+
+#include <Arduino.h>
+#include <HX711_ADC.h>
+#include <Wire.h>  // I2C communication for ldc communication
+
+#include "DFRobot_RGBLCD1602.h"  // LCD control library
+
+#if defined(ESP8266) || defined(ESP32) || defined(AVR)
+#include <EEPROM.h>
+#endif
+
+// LCD object with address, columns, rows
+DFRobot_RGBLCD1602 lcd(0x6B, 16, 2);
+
+// ============================================================
+//                PINS
+// ============================================================
+const int HX711_dout_1 = 34;  // mcu > HX711 no 1 dout pin
+const int HX711_sck_1 = 25;   // mcu > HX711 no 1 sck pin
+const int HX711_dout_2 = 35;  // mcu > HX711 no 2 dout pins
+const int HX711_sck_2 = 26;   // mcu > HX711 no 2 sck pin
+const int BUTTON_PIN = 4;     // button for cancelling the alert
+
+// ============================================================
+//                CONSTRUCTORS AND VARIABLES
+// ============================================================
+// HX711 constructor (dout pin, sck pin)
+HX711_ADC LoadCell_1(HX711_dout_1, HX711_sck_1);  // HX711 1
+HX711_ADC LoadCell_2(HX711_dout_2, HX711_sck_2);  // HX711 2
+
+const int calVal_eepromAdress_1 =
+    0;  // eeprom adress for calibration value load cell 1 (4 bytes)
+const int calVal_eepromAdress_2 =
+    4;  // eeprom adress for calibration value load cell 2 (4 bytes)
+unsigned long t = 0;
+
+// Sensor Variables
+float rawFront = 0, rawBack = 0;
+float front = 0, back = 0, total = 0;
+
+float fastEMA = 0;
+float slowEMA = 0;
+float impactSignal = 0;
+
+unsigned long verifyStart = 0;
+unsigned long alertStart = 0;
+
+const float IMPACT_THRESHOLD = 20.0;
+const float OCCUPIED_THRESHOLD = 30.0;
+const unsigned long VERIFY_TIME_MS = 500;
+const unsigned long ALERT_TIME_MS = 10000; // 10 seconds
+
+bool cancelPressed = false;
+
+// Sensor Struct (Not used currently will implement later)
+struct SensorData {
+  float rawFront;
+  float rawBack;
+  float front;
+  float back;
+  float total;
+
+  float fastEMA;
+  float slowEMA;
+  float impactSignal;
+
+  unsigned long verifyStart;
+};
+
+// ============================================================
+//                STATE DEFINITIONS
+// ============================================================
+
+enum State { NORMAL, VERIFYING_FALL, ALERT_TRIGGERED };
+
+State currentState = NORMAL;
+
+// ============================================================
+//                Forward Function Declaration
+// ============================================================
+void updateData();  // Updates data constantly
+void processFallDetection();
+void tare();
+
+void updateDisplay();
+
+// ============================================================
+//                SETUP LOOP
+// ============================================================
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(22, 19);
+  lcd.init();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Fall Detection");
+  delay(10);
+  Serial.println();
+  Serial.println("Starting...");
+
+  float calibrationValue_1;  // calibration value load cell 1
+  float calibrationValue_2;  // calibration value load cell 2
+
+  calibrationValue_1 =
+      696.0;  // uncomment this if you want to set this value in the sketch
+  calibrationValue_2 =
+      733.0;  // uncomment this if you want to set this value in the sketch
+#if defined(ESP8266) || defined(ESP32)
+  // EEPROM.begin(512); // uncomment this if you use ESP8266 and want to fetch
+  // the value from eeprom
+#endif
+  // EEPROM.get(calVal_eepromAdress_1, calibrationValue_1); // uncomment this if
+  // you want to fetch the value from eeprom EEPROM.get(calVal_eepromAdress_2,
+  // calibrationValue_2); // uncomment this if you want to fetch the value from
+  // eeprom
+
+  LoadCell_1.begin();
+  LoadCell_2.begin();
+  // LoadCell_1.setReverseOutput();
+  // LoadCell_2.setReverseOutput();
+  unsigned long stabilizingtime =
+      2000;  // tare preciscion can be improved by adding a few seconds of
+             // stabilizing time
+  boolean _tare = true;  // set this to false if you don't want tare to be
+                         // performed in the next step
+  byte loadcell_1_rdy = 0;
+  byte loadcell_2_rdy = 0;
+  while (
+      (loadcell_1_rdy + loadcell_2_rdy) <
+      2) {  // run startup, stabilization and tare, both modules simultaniously
+    if (!loadcell_1_rdy)
+      loadcell_1_rdy = LoadCell_1.startMultiple(stabilizingtime, _tare);
+    if (!loadcell_2_rdy)
+      loadcell_2_rdy = LoadCell_2.startMultiple(stabilizingtime, _tare);
+  }
+  if (LoadCell_1.getTareTimeoutFlag()) {
+    Serial.println("Timeout, check MCU>HX711 no.1 wiring and pin designations");
+  }
+  if (LoadCell_2.getTareTimeoutFlag()) {
+    Serial.println("Timeout, check MCU>HX711 no.2 wiring and pin designations");
+  }
+  LoadCell_1.setCalFactor(
+      calibrationValue_1);  // user set calibration value (float)
+  LoadCell_2.setCalFactor(
+      calibrationValue_2);  // user set calibration value (float)
+  Serial.println("Startup is complete");
+}
+
+void loop() {
+  updateData();
+  handleButton();
+  processFallDetection();
+  updateDisplay();
+  tare();
+}
+
+void updateData() {
+  static boolean newDataReady = 0;
+
+  // check for new data/start next conversion:
+  if (LoadCell_1.update()) newDataReady = true;
+  LoadCell_2.update();
+
+  // get smoothed value from data set
+  if ((newDataReady)) {
+    rawFront = LoadCell_1.getData();
+    rawBack = LoadCell_2.getData();
+
+    front = max(0.0f, rawFront);  // clamping the values to be greater than 0;
+    back = max(0.0f, rawBack);
+    total = front + back;
+
+    newDataReady = 0;
+  }
+}
+
+/*
+The process fall detection uses signal processing of moving exponential
+averages. Includes fast response moving average and slow response moving
+average. Normally is is 0 but in sudden falls it should be high.
+*/
+void processFallDetection() {
+  // Signal processing using exponential moving average
+  // We may have to adjust these values (increase alpha for more responsive).
+  // newFiltered = a * newvalue + (1-a) * oldFiltered
+  fastEMA = 0.35f * total + 0.65f * fastEMA;
+  slowEMA = 0.03f * total + 0.97f * slowEMA;
+
+  impactSignal = fastEMA - slowEMA;
+  switch (currentState) {
+    case NORMAL:
+      if (impactSignal > IMPACT_THRESHOLD) {
+        currentState = VERIFYING_FALL;
+        verifyStart = millis();
+      }
+      break;
+
+    case VERIFYING_FALL:
+      if (millis() - verifyStart >= VERIFY_TIME_MS) {
+        if (total > OCCUPIED_THRESHOLD) {
+          currentState = ALERT_TRIGGERED;
+          alertStart = millis(); 
+        } else {
+          currentState = NORMAL;
+        }
+      }
+      break;
+
+    case ALERT_TRIGGERED:
+      if (cancelPressed) {
+        currentState = NORMAL;
+        cancelPressed = false;
+
+        fastEMA = 0;
+        slowEMA = 0;
+        impactSignal = 0;
+        break;
+      }
+      
+      if (millis() - alertStart > ALERT_TIME_MS) {
+        currentState = NORMAL;
+
+        // reset signals so it doesn’t instantly retrigger
+        fastEMA = 0;
+        slowEMA = 0;
+        impactSignal = 0;
+    }
+    break;
+  }
+}
+
+void tare() {
+  // receive command from serial terminal, send 't' to initiate tare operation:
+  if (Serial.available() > 0) {
+    char inByte = Serial.read();
+    if (inByte == 't') {
+      LoadCell_1.tareNoDelay();
+      LoadCell_2.tareNoDelay();
+    }
+  }
+
+  // check if last tare operation is complete
+  if (LoadCell_1.getTareStatus() == true) {
+    Serial.println("Tare load cell 1 complete");
+  }
+  if (LoadCell_2.getTareStatus() == true) {
+    Serial.println("Tare load cell 2 complete");
+  }
+}
+
+void updateDisplay() {
+  static unsigned long lastLcdUpdate = 0;
+  if (millis() - lastLcdUpdate < 100) return;
+  lastLcdUpdate = millis();
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+
+  if (currentState == NORMAL) {
+    lcd.print("Monitoring...");
+    lcd.setCursor(0, 1);
+    lcd.print((int)total);
+  } else if (currentState == VERIFYING_FALL) {
+    lcd.print("Verifying...");
+    lcd.setCursor(0, 1);
+    lcd.print((int)impactSignal);
+  } else if (currentState == ALERT_TRIGGERED) {
+    lcd.print("FALL DETECTED");
+    lcd.setCursor(0, 1);
+    if (front > back * 1.2f)
+      lcd.print("Front");
+    else if (back > front * 1.2f)
+      lcd.print("Back");
+    else
+      lcd.print("Center");
+  }
+}
+
+void handleButton() {
+  static bool lastState = HIGH;
+  static unsigned long lastDebounceTime = 0;
+  const unsigned long debounceDelay = 50;
+
+  bool reading = digitalRead(BUTTON_PIN);
+
+  // debounce
+  if (reading != lastState) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    // detect press (HIGH → LOW)
+    if (lastState == HIGH && reading == LOW) {
+      cancelPressed = true;
+    }
+  }
+
+  lastState = reading;
+}
