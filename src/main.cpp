@@ -50,7 +50,7 @@ const float IMPACT_THRESHOLD = 20.0;
 const float OCCUPIED_THRESHOLD = 30.0;
 const unsigned long VERIFY_TIME_MS = 500;
 
-// Sensor Struct
+// Sensor Struct (Not used currently will implement later)
 struct SensorData {
   float rawFront;
   float rawBack;
