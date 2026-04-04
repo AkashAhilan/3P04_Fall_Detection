@@ -7,6 +7,17 @@ A smart fall detection mat using dual load cells (Front side and Back) and an ES
 
 This project monitors weight distribution across two pressure-sensitive load cells. When a sudden impact is detected, it enters a verification state that can be cancelled within 3 seconds using a button. If not cancelled, an alert is triggered and displayed on an LCD screen.
 
+## TODO LIST
+
+- Currently the "Key configuration" values noted below need to be changed (I can do)
+- Add state transitioning logic.
+- Currently once the fall is detected it is stuck in that state (Button to release or time delay possibly)
+- Possibly wifi communication and web app if time to implement
+
+## STATUS
+
+- IN DEVELOPMENT
+
 ## Hardware Requirements
 
 - **Microcontroller**: ESP32 (PlatformIO with pico32 environment)
