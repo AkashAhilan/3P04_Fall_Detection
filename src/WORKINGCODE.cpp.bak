@@ -48,11 +48,6 @@ State currentState = NORMAL;
 //                SETUP LOOP
 // ============================================================
 
-// ============================================================
-//                Forward Function Declaration
-// ============================================================
-void updateData();  // Updates data constantly
-
 void setup() {
   Serial.begin(115200);
   Wire.begin(22, 19);
@@ -112,9 +107,7 @@ void setup() {
   Serial.println("Startup is complete");
 }
 
-void loop() { updateData(); }
-
-void updateData() {
+void loop() {
   static boolean newDataReady = 0;
   const int serialPrintInterval =
       0;  // increase value to slow down serial print activity
@@ -136,9 +129,7 @@ void updateData() {
       t = millis();
     }
   }
-}
 
-void tare() {
   // receive command from serial terminal, send 't' to initiate tare operation:
   if (Serial.available() > 0) {
     char inByte = Serial.read();
