@@ -77,8 +77,10 @@ State currentState = NORMAL;
 //                Forward Function Declaration
 // ============================================================
 void updateData();  // Updates data constantly
-void forceDetection();
+void processFallDetection();
 void tare();
+
+void updateDisplay();
 
 // ============================================================
 //                SETUP LOOP
@@ -143,15 +145,15 @@ void setup() {
   Serial.println("Startup is complete");
 }
 
-void loop() { updateData(); }
-
-void forceDetection() {}
+void loop() {
+  updateData();
+  processFallDetection();
+  updateDisplay();
+  tare();
+}
 
 void updateData() {
   static boolean newDataReady = 0;
-
-  const int serialPrintInterval =
-      0;  // increase value to slow down serial print activity
 
   // check for new data/start next conversion:
   if (LoadCell_1.update()) newDataReady = true;
@@ -159,20 +161,50 @@ void updateData() {
 
   // get smoothed value from data set
   if ((newDataReady)) {
-    if (millis() > t + serialPrintInterval) {
-      float a = LoadCell_1.getData();
-      float b = LoadCell_2.getData();
-      float front = max(0.0f, a);
-      float back = max(0.0f, b);
-      float total = front + back;
+    rawFront = LoadCell_1.getData();
+    rawBack = LoadCell_2.getData();
 
-      Serial.print("Load_cell 1 output val: ");
-      Serial.print(a);
-      Serial.print("    Load_cell 2 output val: ");
-      Serial.println(b);
-      newDataReady = 0;
-      t = millis();
-    }
+    front = max(0.0f, rawFront);  // clamping the values to be greater than 0;
+    back = max(0.0f, rawBack);
+    total = front + back;
+
+    newDataReady = 0;
+  }
+}
+
+/*
+The process fall detection uses signal processing of moving exponential
+averages. Includes fast response moving average and slow response moving
+average. Normally is is 0 but in sudden falls it should be high.
+*/
+void processFallDetection() {
+  // Signal processing using exponential moving average
+  // We may have to adjust these values (increase alpha for more responsive).
+  // newFiltered = a * newvalue + (1-a) * oldFiltered
+  fastEMA = 0.35f * total + 0.65f * fastEMA;
+  slowEMA = 0.03f * total + 0.97f * slowEMA;
+
+  impactSignal = fastEMA - slowEMA;
+  switch (currentState) {
+    case NORMAL:
+      if (impactSignal > IMPACT_THRESHOLD) {
+        currentState = VERIFYING_FALL;
+        verifyStart = millis();
+      }
+      break;
+
+    case VERIFYING_FALL:
+      if (millis() - verifyStart >= VERIFY_TIME_MS) {
+        if (total > OCCUPIED_THRESHOLD) {
+          currentState = ALERT_TRIGGERED;
+        } else {
+          currentState = NORMAL;
+        }
+      }
+      break;
+
+    case ALERT_TRIGGERED:
+      break;
   }
 }
 
@@ -192,5 +224,33 @@ void tare() {
   }
   if (LoadCell_2.getTareStatus() == true) {
     Serial.println("Tare load cell 2 complete");
+  }
+}
+
+void updateDisplay() {
+  static unsigned long lastLcdUpdate = 0;
+  if (millis() - lastLcdUpdate < 100) return;
+  lastLcdUpdate = millis();
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+
+  if (currentState == NORMAL) {
+    lcd.print("Monitoring...");
+    lcd.setCursor(0, 1);
+    lcd.print((int)total);
+  } else if (currentState == VERIFYING_FALL) {
+    lcd.print("Verifying...");
+    lcd.setCursor(0, 1);
+    lcd.print((int)impactSignal);
+  } else if (currentState == ALERT_TRIGGERED) {
+    lcd.print("FALL DETECTED");
+    lcd.setCursor(0, 1);
+    if (front > back * 1.2f)
+      lcd.print("Front");
+    else if (back > front * 1.2f)
+      lcd.print("Back");
+    else
+      lcd.print("Center");
   }
 }
