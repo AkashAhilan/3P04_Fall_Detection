@@ -21,10 +21,10 @@ const int HX711_dout_1 = 34;  // mcu > HX711 no 1 dout pin
 const int HX711_sck_1 = 25;   // mcu > HX711 no 1 sck pin
 const int HX711_dout_2 = 35;  // mcu > HX711 no 2 dout pins
 const int HX711_sck_2 = 26;   // mcu > HX711 no 2 sck pin
-const int BUTTON_PIN = 8;     // button for cancelling the alert
+// const int BUTTON_PIN = 8;     // button for cancelling the alert
 
 // ============================================================
-//                LOADCELL CONSTRUCTORS AND
+//                CONSTRUCTORS AND VARIABLES
 // ============================================================
 // HX711 constructor (dout pin, sck pin)
 HX711_ADC LoadCell_1(HX711_dout_1, HX711_sck_1);  // HX711 1
@@ -36,6 +36,35 @@ const int calVal_eepromAdress_2 =
     4;  // eeprom adress for calibration value load cell 2 (4 bytes)
 unsigned long t = 0;
 
+// Sensor Variables
+float rawFront = 0, rawBack = 0;
+float front = 0, back = 0, total = 0;
+
+float fastEMA = 0;
+float slowEMA = 0;
+float impactSignal = 0;
+
+unsigned long verifyStart = 0;
+
+const float IMPACT_THRESHOLD = 20.0;
+const float OCCUPIED_THRESHOLD = 30.0;
+const unsigned long VERIFY_TIME_MS = 500;
+
+// Sensor Struct
+struct SensorData {
+  float rawFront;
+  float rawBack;
+  float front;
+  float back;
+  float total;
+
+  float fastEMA;
+  float slowEMA;
+  float impactSignal;
+
+  unsigned long verifyStart;
+};
+
 // ============================================================
 //                STATE DEFINITIONS
 // ============================================================
@@ -45,13 +74,15 @@ enum State { NORMAL, VERIFYING_FALL, ALERT_TRIGGERED };
 State currentState = NORMAL;
 
 // ============================================================
-//                SETUP LOOP
-// ============================================================
-
-// ============================================================
 //                Forward Function Declaration
 // ============================================================
 void updateData();  // Updates data constantly
+void forceDetection();
+void tare();
+
+// ============================================================
+//                SETUP LOOP
+// ============================================================
 
 void setup() {
   Serial.begin(115200);
@@ -114,8 +145,11 @@ void setup() {
 
 void loop() { updateData(); }
 
+void forceDetection() {}
+
 void updateData() {
   static boolean newDataReady = 0;
+
   const int serialPrintInterval =
       0;  // increase value to slow down serial print activity
 
@@ -128,6 +162,10 @@ void updateData() {
     if (millis() > t + serialPrintInterval) {
       float a = LoadCell_1.getData();
       float b = LoadCell_2.getData();
+      float front = max(0.0f, a);
+      float back = max(0.0f, b);
+      float total = front + back;
+
       Serial.print("Load_cell 1 output val: ");
       Serial.print(a);
       Serial.print("    Load_cell 2 output val: ");
