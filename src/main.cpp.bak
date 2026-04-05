@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include <HX711_ADC.h>
-#include <Wire.h>  // I2C communication for ldc communication
+#include <Wire.h>  // I2C communication for display communication
 #include <ezButton.h>
 
 #include "DFRobot_RGBLCD1602.h"  // LCD control library
