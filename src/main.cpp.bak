@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <HX711_ADC.h>
 #include <Wire.h>  // I2C communication for ldc communication
+#include <ezButton.h>
 
 #include "DFRobot_RGBLCD1602.h"  // LCD control library
 
@@ -21,6 +22,7 @@ const int HX711_dout_1 = 34;  // mcu > HX711 no 1 dout pin
 const int HX711_sck_1 = 25;   // mcu > HX711 no 1 sck pin
 const int HX711_dout_2 = 35;  // mcu > HX711 no 2 dout pins
 const int HX711_sck_2 = 26;   // mcu > HX711 no 2 sck pin
+ezButton button(37);
 // const int BUTTON_PIN = 8;     // button for cancelling the alert
 
 // ============================================================
@@ -93,6 +95,7 @@ void setup() {
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Fall Detection");
+  button.setDebounceTime(50);
   delay(10);
   Serial.println();
   Serial.println("Starting...");
@@ -146,6 +149,7 @@ void setup() {
 }
 
 void loop() {
+  button.loop();
   updateData();
   processFallDetection();
   updateDisplay();
@@ -185,12 +189,14 @@ void processFallDetection() {
   slowEMA = 0.03f * total + 0.97f * slowEMA;
 
   impactSignal = fastEMA - slowEMA;
+  int buttonState = button.getState();
   switch (currentState) {
     case NORMAL:
       if (impactSignal > IMPACT_THRESHOLD) {
         currentState = VERIFYING_FALL;
         verifyStart = millis();
       }
+
       break;
 
     case VERIFYING_FALL:
@@ -204,6 +210,9 @@ void processFallDetection() {
       break;
 
     case ALERT_TRIGGERED:
+      if (buttonState) {
+        currentState = NORMAL;
+      }
       break;
   }
 }
