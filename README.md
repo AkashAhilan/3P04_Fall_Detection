@@ -1,6 +1,6 @@
 # 3P04 Fall Detection System
 
-A smart fall detection mat using dual load cells (Front side and Back) and an ESP32 microcontroller to detect and alert on potential falls.
+A smart fall detection mat using dual load cells (Front side and Back) and an ESP32 microcontroller to detect and alert on potential falls. Built for 3P04 Design Verification.
 **_Note .BAK FILES ARE BACKUP NOT COMPILED CODE_**
 
 ## Overview
