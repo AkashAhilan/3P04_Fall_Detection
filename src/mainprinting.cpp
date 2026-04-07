@@ -56,14 +56,22 @@ float impactSignal = 0.0f;
 bool filtersInitialized = false;
 unsigned long verifyStart = 0;
 
+bool matOccupied = false;
+bool systemArmed = false;
+unsigned long occupiedStart = 0;
+
+const float ENTRY_THRESHOLD = 20.0f;
+const float EXIT_THRESHOLD = 5.0f;
+const unsigned long ARM_DELAY_MS = 700;
+
 // ============================================================
 // TUNING VALUES
 // ============================================================
 // Start with these, then tune based on Serial Monitor output
-const float FAST_ALPHA = 0.45f;
+const float FAST_ALPHA = 0.95f;
 const float SLOW_ALPHA = 0.05f;
 
-const float IMPACT_THRESHOLD = 100.0f;
+const float IMPACT_THRESHOLD = 80.0f;
 const float OCCUPIED_THRESHOLD = 15.0f;
 const float MIN_TOTAL_FOR_EVENT = 5.0f;
 
@@ -217,6 +225,48 @@ void processFallDetection() {
     impactSignal = 0.0f;
     filtersInitialized = true;
     return;
+  }
+
+  //   ------ Prevent trigger of getting on the mat ----
+  if (!matOccupied) {
+    // Empty mat waiting for contact
+    if (total > ENTRY_THRESHOLD) {
+      matOccupied = true;
+      occupiedStart = millis();
+      systemArmed = false;
+
+      fastEMA = total;
+      slowEMA = total;
+      impactSignal = 0.0f;
+    }
+    return;
+  }
+
+  // Disarm Mat if person leaves
+  if (total < EXIT_THRESHOLD) {
+    matOccupied = false;
+    systemArmed = false;
+
+    fastEMA = total;
+    slowEMA = total;
+    impactSignal = 0.0f;
+
+    if (currentState != ALERT_TRIGGERED) {
+      currentState = NORMAL;
+    }
+    return;
+  }
+  // Person is on mat, but not armed yet
+  if (!systemArmed) {
+    if (millis() - occupiedStart >= ARM_DELAY_MS) {
+      systemArmed = true;
+
+      // Re-baseline once armed
+      fastEMA = total;
+      slowEMA = total;
+      impactSignal = 0.0f;
+    }
+    return;  // still ignore impacts during entry phase
   }
 
   // Exponential moving averages
